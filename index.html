@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MOA · 목표 자산 모으기</title>
-<meta name="description" content="카드 이용내역을 올리면 카테고리별 지출·월 예산·자산·저축 플랜을 한 화면에서. 데이터는 내 브라우저에만 저장됩니다.">
+<meta name="description" content="카드 내역만 올리면, 돈의 흐름이 보입니다. 지출 분류 · 월 예산 · 목표 자산 진행률. 가입 없음, 서버 없음.">
 <style>
 :root{
   color-scheme:light;
@@ -110,8 +110,9 @@ svg text{fill:var(--ink-2);font-size:11px}
 <section id="onboard" class="hidden">
   <div class="hero">
     <h1>MOA</h1>
-    <p>목표 자산까지 얼마나 왔는지, 어디에 돈이 새는지, 저축을 지킬 수 있는 생활비가 얼마인지 — 한 화면에서.</p>
-    <p class="sub">입력한 모든 데이터는 이 기기의 브라우저에만 저장되고 어디로도 전송되지 않습니다. 기기를 바꾸거나 브라우저 데이터를 지우면 사라지므로, 설정 탭의 JSON 백업을 이용하세요.</p>
+    <p style="font-size:17px;color:var(--ink)">카드 내역만 올리면, 돈의 흐름이 보입니다.</p>
+    <p>어디에 쓰는지 · 이번 달 얼마나 남았는지 · 목표 자산까지 얼마나 왔는지.</p>
+    <p class="sub">가입 없음, 서버 없음. 데이터는 내 브라우저에만 저장됩니다 — 기기를 바꾸기 전엔 설정 탭에서 JSON 백업을 받아 두세요.</p>
   </div>
   <div class="card">
     <div class="steps" id="obSteps"></div>
@@ -129,7 +130,7 @@ svg text{fill:var(--ink-2);font-size:11px}
 <!-- ============ 앱 ============ -->
 <div id="app" class="hidden">
 <header>
-  <div><h1 id="appTitle">MOA</h1><div class="sub" id="subtitle">지출 · 자산 · 저축 플랜</div></div>
+  <div><h1 id="appTitle">MOA</h1><div class="sub" id="subtitle">돈의 흐름을 한눈에</div></div>
   <div class="status"><span class="dot"></span><span>이 브라우저에만 저장됨</span></div>
 </header>
 <nav class="tabs" id="tabs">
@@ -221,6 +222,7 @@ svg text{fill:var(--ink-2);font-size:11px}
     <div class="row" style="margin-top:10px"><label class="small">연도가 없는 파일(월.일만 있는 명세서)의 연도: <select id="wooriYear" aria-label="연도"></select></label></div>
     <div id="mapPanel" class="hidden"></div>
     <div id="uploadResult"></div>
+    <details style="margin-top:10px"><summary>업로드 이력 <span class="sub" id="uploadCount"></span></summary><div id="uploadHistory" class="small" style="margin-top:6px"></div></details>
   </div>
   <div class="card">
     <h2>자산 업데이트</h2>
@@ -481,7 +483,7 @@ function estimateDeductions(gross, dependents, relief){
 }
 
 // ---------- 상태 ----------
-const S = { months:{}, settings:null, assets:{}, mappings:{}, demo:false,
+const S = { months:{}, settings:null, assets:{}, mappings:{}, uploads:[], demo:false,
   ui:{ tab:'dash', month:'all', card:'all', cat:null, q:'', sort:'date', onlyUnc:false } };
 const EMPTY_SETTINGS = () => ({
   appName:'MOA', target:100000000, targetDate:'',
@@ -490,7 +492,7 @@ const EMPTY_SETTINGS = () => ({
 });
 const LS_KEY='moa_store_v1';
 function lsLoad(){ try{ return JSON.parse(localStorage.getItem(LS_KEY)||'null'); }catch(e){ return null; } }
-function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify({months:S.months, settings:S.settings, assets:S.assets, mappings:S.mappings, demo:S.demo})); }catch(e){ toast('저장 실패: 브라우저 저장공간을 확인하세요'); } }
+function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify({months:S.months, settings:S.settings, assets:S.assets, mappings:S.mappings, uploads:S.uploads, demo:S.demo})); }catch(e){ toast('저장 실패: 브라우저 저장공간을 확인하세요'); } }
 
 // ---------- 파생 ----------
 function allRows(){ const out=[]; Object.keys(S.months).sort().forEach(ym => (S.months[ym].rows||[]).forEach(r => out.push(r))); return out; }
@@ -556,10 +558,10 @@ function renderOnboard(){
     $('#obAddAcc').onclick=()=>{ sync(); d.accounts.push({group:'투자',name:'',amount:''}); renderOnboard(); };
   } else {
     b.innerHTML = `<h2>카드 이용내역</h2><div class="sub" style="margin-bottom:8px">카드사 홈페이지·앱에서 “이용내역 엑셀 다운로드”로 받은 파일을 올리세요. 여러 개 동시 가능. 지금 건너뛰고 나중에 업로드·설정 탭에서 올려도 됩니다.</div>
-      <div class="drop" id="obDrop"><input type="file" id="obFile" multiple accept=".xls,.xlsx,.csv" aria-label="카드 이용내역 파일"></div>
+      <div class="drop" id="obDrop"><input type="file" id="obFile" multiple accept=".xls,.xlsx,.csv" aria-label="카드 이용내역 파일"><div class="sub" style="margin-top:6px">여러 번 나눠 올려도 됩니다 — 올린 파일은 계속 누적됩니다.</div></div>
       <div id="obMap" class="hidden"></div><div id="obUploadResult"></div>
       <div class="note">다른 사람의 서버로 올라가지 않습니다 — 파일은 이 브라우저 안에서만 읽힙니다.</div>`;
-    $('#obFile').onchange=e=>handleFiles([...e.target.files], {mapEl:$('#obMap'), resultEl:$('#obUploadResult')});
+    $('#obFile').onchange=async e=>{ const fs=[...e.target.files]; e.target.value=''; await handleFiles(fs, {mapEl:$('#obMap'), resultEl:$('#obUploadResult')}); };
     const dz=$('#obDrop'); dz.ondragover=e=>{e.preventDefault();dz.classList.add('over');}; dz.ondragleave=()=>dz.classList.remove('over'); dz.ondrop=e=>{e.preventDefault();dz.classList.remove('over');handleFiles([...e.dataTransfer.files],{mapEl:$('#obMap'), resultEl:$('#obUploadResult')});};
   }
   $('#obPrev').style.visibility = OB.step? 'visible':'hidden';
@@ -597,7 +599,7 @@ function loadDemo(){
     rows.sort((a,b)=>a.date.localeCompare(b.date)); S.months[ym]={rows}; }
   save();
 }
-function exitDemo(){ S.demo=false; S.months={}; S.assets={}; S.settings=EMPTY_SETTINGS(); S.mappings={}; save(); OB.step=0; showOnboard(); }
+function exitDemo(){ S.demo=false; S.months={}; S.assets={}; S.settings=EMPTY_SETTINGS(); S.mappings={}; S.uploads=[]; save(); OB.step=0; showOnboard(); }
 
 // ---------- 화면 전환 ----------
 function showOnboard(){ $('#onboard').classList.remove('hidden'); $('#app').classList.add('hidden'); renderOnboard(); }
@@ -758,6 +760,8 @@ function renderData(){
     $('#addSav').onclick=()=>{ readPlanInputs(); sv.push({name:'새 항목',before:0}); save(); renderData(); };
     $('#savePlan').onclick=()=>{ readPlanInputs(); save(); renderAll(); toast('저장했습니다'); };
   }
+  $('#uploadCount').textContent = S.uploads.length? `(${S.uploads.length}개 파일 · 거래 ${allRows().length}건)` : '(없음)';
+  $('#uploadHistory').innerHTML = S.uploads.length? `<table>${S.uploads.map(u=>`<tr><td class="muted" style="white-space:nowrap">${u.at}</td><td>${esc(u.name)}</td><td class="muted">${esc(u.bank||'')}</td><td class="num">${u.n}건 (신규 ${u.added})</td><td class="muted" style="white-space:nowrap">${u.span||''}</td></tr>`).join('')}</table>` : '<span class="sub">아직 올린 파일이 없습니다.</span>';
   const rules = Object.entries(S.settings.merchantRules||{});
   $('#rulesBox').innerHTML = rules.length? `<table>${rules.map(([m,c])=>`<tr><td>${esc(m)}</td><td><i class="sw" style="background:${CAT_COLOR[c]||'var(--s0)'}"></i> ${c}</td><td class="num"><button class="btn small" data-rm="${esc(m)}">삭제</button></td></tr>`).join('')}</table>` : '<span class="sub">아직 없음. 지출 탭에서 태그를 바꾸고 “규칙 저장”을 누르면 여기에 쌓입니다.</span>';
   $('#rulesBox').querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{ delete S.settings.merchantRules[b.dataset.rm]; save(); renderData(); });
@@ -812,13 +816,15 @@ async function handleFiles(files, ctx){
         if (saved) { bank=saved.cardLabel||'기타 카드'; tx=GB.parseGeneric(rows, saved, {year:yearOpt}); }
         else { pending.push({f, rows, sig}); continue; } }
       const r = mergeTx(tx); added+=r.added;
+      logUpload(f.name, bank, tx.length, r);
       res.push(`✓ ${f.name} (${bank}) — ${tx.length}건 인식, 신규 ${r.added}건, 중복 ${r.dup}건${r.span?' · '+r.span:''}`);
     } catch(e) { console.error(e); res.push(`✕ ${f.name}: 읽기 실패 (${e.message||e})`); }
   }
-  ctx.resultEl.innerHTML = res.length? `<div class="note">${res.map(esc).join('<br>')}<br><b>총 신규 ${added}건</b>${added? ' — 지출 탭에서 미분류·선물 태그를 확인하세요.' : ''}</div>` : '';
+  if (res.length) ctx.resultEl.insertAdjacentHTML('afterbegin', `<div class="note">${res.map(esc).join('<br>')}<br><b>이번 업로드 신규 ${added}건</b> · 저장된 거래 총 ${allRows().length}건${added? ' — 지출 탭에서 미분류·선물 태그를 확인하세요.' : ''}<br><span class="sub">파일을 더 올려도 기존 거래는 그대로 유지되고 추가됩니다.</span></div>`);
   if (pending.length) showMapper(pending, ctx); else ctx.mapEl.classList.add('hidden');
   save(); if (!$('#app').classList.contains('hidden')) renderAll();
 }
+function logUpload(name, bank, n, r){ S.uploads.unshift({name, bank, n, added:r.added, dup:r.dup, span:r.span, at:new Date().toISOString().slice(0,16).replace('T',' ')}); S.uploads=S.uploads.slice(0,50); }
 function mergeTx(tx){
   let added=0, dup=0; const dates=[];
   for (const t of tx) { const ym=ymOf(t.date); if(!S.months[ym]) S.months[ym]={rows:[]};
@@ -849,7 +855,8 @@ function showMapper(pending, ctx){
   const preview=()=>{ const m=cur(); if (m.date==null||m.merchant==null||m.amount==null) { $('#mpPreview').textContent='날짜·가맹점·금액 열을 모두 지정하세요'; return null; } const tx=GB.parseGeneric(rows,m,{year:+$('#wooriYear').value||undefined}); $('#mpPreview').textContent=`${tx.length}건 인식${tx[0]?` · 예: ${tx[0].date} ${tx[0].merchant} ${won(tx[0].amount)}`:''}`; return tx; };
   el.querySelectorAll('select,input').forEach(x=>x.onchange=preview); preview();
   $('#mpApply').onclick=()=>{ const m=cur(); const tx=preview(); if(!tx) return; S.mappings[sig]=m; const r=mergeTx(tx);
-    ctx.resultEl.innerHTML += `<div class="note">✓ ${esc(f.name)} (${esc(m.cardLabel)}) — ${tx.length}건 인식, 신규 ${r.added}건, 중복 ${r.dup}건${r.span?' · '+r.span:''}</div>`;
+    logUpload(f.name, m.cardLabel, tx.length, r);
+    ctx.resultEl.insertAdjacentHTML('afterbegin', `<div class="note">✓ ${esc(f.name)} (${esc(m.cardLabel)}) — ${tx.length}건 인식, 신규 ${r.added}건, 중복 ${r.dup}건${r.span?' · '+r.span:''} · 저장된 거래 총 ${allRows().length}건</div>`);
     save(); pending.shift(); if (pending.length) showMapper(pending, ctx); else el.classList.add('hidden'); if (!$('#app').classList.contains('hidden')) renderAll(); };
   $('#mpSkip').onclick=()=>{ pending.shift(); if (pending.length) showMapper(pending, ctx); else el.classList.add('hidden'); };
 }
@@ -919,25 +926,25 @@ $('#tabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{ S.ui.tab=b.data
 $('#search').oninput = e=>{ S.ui.q=e.target.value.trim(); renderSpend(); };
 $('#sortSel').onchange = e=>{ S.ui.sort=e.target.value; renderSpend(); };
 $('#onlyUnc').onchange = e=>{ S.ui.onlyUnc=e.target.checked; renderSpend(); };
-$('#fileInput').onchange = e=>{ handleFiles([...e.target.files]); e.target.value=''; };
+$('#fileInput').onchange = async e=>{ const fs=[...e.target.files]; e.target.value=''; await handleFiles(fs); };
 const drop=$('#drop'); drop.ondragover=e=>{ e.preventDefault(); drop.classList.add('over'); }; drop.ondragleave=()=>drop.classList.remove('over'); drop.ondrop=e=>{ e.preventDefault(); drop.classList.remove('over'); handleFiles([...e.dataTransfer.files]); };
 $('#exportBtn').onclick = ()=>{
-  const json = JSON.stringify({months:S.months, settings:S.settings, assets:S.assets, mappings:S.mappings, exportedAt:new Date().toISOString()}, null, 1);
+  const json = JSON.stringify({months:S.months, settings:S.settings, assets:S.assets, mappings:S.mappings, uploads:S.uploads, exportedAt:new Date().toISOString()}, null, 1);
   const blob=new Blob([json],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`${(S.settings.appName||'moa').replace(/\s+/g,'_')}_백업_${todayISO()}.json`; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },500);
 };
 $('#importBtn').onclick=()=>$('#importFile').click();
 $('#importFile').onchange = async e=>{ const f=e.target.files[0]; if(!f) return; try{ const o=JSON.parse(await f.text()); if(!o.months && !o.settings) throw new Error('가계부 백업 파일이 아닙니다');
-  S.demo=false; if(o.months) S.months=o.months; if(o.settings){ S.settings=Object.assign(EMPTY_SETTINGS(), o.settings); S.settings.onboarded=true; if(!S.settings.salary.prev) S.settings.salary={prev:{label:'현재 급여',gross:0,net:0,items:[]},curr:null,changeFrom:''}; if(S.settings.salary.curr && !S.settings.salary.changeFrom) S.settings.salary.curr=null; } if(o.assets) S.assets=o.assets; if(o.mappings) S.mappings=o.mappings;
+  S.demo=false; if(o.months) S.months=o.months; if(o.settings){ S.settings=Object.assign(EMPTY_SETTINGS(), o.settings); S.settings.onboarded=true; if(!S.settings.salary.prev) S.settings.salary={prev:{label:'현재 급여',gross:0,net:0,items:[]},curr:null,changeFrom:''}; if(S.settings.salary.curr && !S.settings.salary.changeFrom) S.settings.salary.curr=null; } if(o.assets) S.assets=o.assets; if(o.mappings) S.mappings=o.mappings; if(o.uploads) S.uploads=o.uploads;
   save(); showApp(); toast('가져오기 완료'); }catch(err){ toast('가져오기 실패: '+err.message); } e.target.value=''; };
 $('#wipeBtn').onclick = ()=>{ const b=$('#wipeBtn'); if(!b.dataset.armed){ b.dataset.armed='1'; b.textContent='정말 삭제하려면 다시 클릭 (5초)'; setTimeout(()=>{ delete b.dataset.armed; b.textContent='전체 초기화'; },5000); return; } delete b.dataset.armed; b.textContent='전체 초기화';
-  try{localStorage.removeItem(LS_KEY);}catch(e){} S.months={}; S.assets={}; S.mappings={}; S.settings=EMPTY_SETTINGS(); S.demo=false; OB.step=0; showOnboard(); toast('초기화했습니다'); };
+  try{localStorage.removeItem(LS_KEY);}catch(e){} S.months={}; S.assets={}; S.mappings={}; S.uploads=[]; S.settings=EMPTY_SETTINGS(); S.demo=false; OB.step=0; showOnboard(); toast('초기화했습니다'); };
 $('#demoExit').onclick = exitDemo;
 window.addEventListener('resize', ()=>{ if ($('#app').classList.contains('hidden')) return; if (S.ui.tab==='dash') renderDash(); if (S.ui.tab==='spend') renderSpend(); });
 
 // ---------- 시작 ----------
 (function init(){
   const c = lsLoad();
-  if (c && c.settings && c.settings.onboarded) { S.months=c.months||{}; S.settings=Object.assign(EMPTY_SETTINGS(), c.settings); S.assets=c.assets||{}; S.mappings=c.mappings||{}; S.demo=!!c.demo; showApp(); }
+  if (c && c.settings && c.settings.onboarded) { S.months=c.months||{}; S.settings=Object.assign(EMPTY_SETTINGS(), c.settings); S.assets=c.assets||{}; S.mappings=c.mappings||{}; S.uploads=c.uploads||[]; S.demo=!!c.demo; showApp(); }
   else { S.settings=EMPTY_SETTINGS(); showOnboard(); }
 })();
 })();
